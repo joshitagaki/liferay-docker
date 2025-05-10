@@ -2,6 +2,7 @@
 
 source ../_liferay_common.sh
 source _bom.sh
+source _ci.sh
 source _git.sh
 source _hotfix.sh
 source _jdk.sh
@@ -153,6 +154,8 @@ function main {
 		lc_time_run upload_boms xanadu
 
 		lc_time_run upload_release
+
+		lc_time_run trigger_ci_test_suite
 	else
 		lc_time_run prepare_release_dir
 
