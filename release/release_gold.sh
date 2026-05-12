@@ -7,6 +7,7 @@ source ../_release_common.sh
 source ./_git.sh
 source ./_jdk.sh
 source ./_jira.sh
+source ./_package.sh
 source ./_product.sh
 source ./_promotion.sh
 source ./_releases_json.sh
@@ -72,6 +73,74 @@ function check_usage {
 	LIFERAY_PORTAL_REPOSITORY_NAME="liferay-portal-ee"
 }
 
+function generate_breaking_changes_report {
+	if ! is_quarterly_release
+	then
+		lc_log INFO "Skipping the breaking changes report."
+
+		return "${LIFERAY_COMMON_EXIT_CODE_SKIPPED}"
+	fi
+
+	if [ ! -d "${_PROJECTS_DIR}/liferay-portal-ee" ]
+	then
+		lc_log ERROR "Unable to find the liferay-portal-ee repository at ${_PROJECTS_DIR}/liferay-portal-ee."
+
+		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
+	fi
+
+	local previous_product_version=$( \
+		jq --raw-output "[.[] | \
+			select(.product == \"${LIFERAY_RELEASE_PRODUCT_NAME}\" and .promoted == \"true\" and .targetPlatformVersion != \"${_PRODUCT_VERSION}\") | \
+			.targetPlatformVersion] | first" "${_PROMOTION_DIR}/releases.json" | \
+		tr -d '[:space:]')
+
+	if [ -z "${previous_product_version}" ] || [ "${previous_product_version}" == "null" ]
+	then
+		lc_log ERROR "Unable to find a previous product version for the breaking changes report."
+
+		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
+	fi
+
+	local end_hash=$(lc_get_property "$(lc_download "https://releases.liferay.com/${LIFERAY_RELEASE_PRODUCT_NAME}/${_PRODUCT_VERSION}/release.properties")" git.hash.liferay-portal-ee)
+	local start_hash=$(lc_get_property "$(lc_download "https://releases.liferay.com/${LIFERAY_RELEASE_PRODUCT_NAME}/${previous_product_version}/release.properties")" git.hash.liferay-portal-ee)
+
+	if [ -z "${start_hash}" ] || [ -z "${end_hash}" ]
+	then
+		lc_log ERROR "Unable to get the git hashes for the breaking changes report."
+
+		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
+	fi
+
+	local report_file=$(mktemp --suffix=.md)
+
+	if ! generate_breaking_changes_markdown \
+			"${_PROJECTS_DIR}/liferay-portal-ee" \
+			"release-$(get_product_group_version)" \
+			"${start_hash}" \
+			"${end_hash}" \
+			"${report_file}"
+	then
+		lc_log ERROR "Unable to generate the breaking changes report."
+
+		rm --force "${report_file}"
+
+		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
+	fi
+
+	if ! gsutil cp "${report_file}" "gs://liferay-releases/${LIFERAY_RELEASE_PRODUCT_NAME}/${_PRODUCT_VERSION}/breaking-changes.md"
+	then
+		lc_log ERROR "Unable to upload the breaking changes report."
+
+		rm --force "${report_file}"
+
+		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
+	fi
+
+	rm --force "${report_file}"
+
+	lc_log INFO "Breaking changes report uploaded successfully."
+}
+
 function is_latest_product_version_by_releases_json {
 	local latest_product_version=$( \
 		jq --raw-output "[.[] | \
@@ -119,6 +188,8 @@ function main {
 	fi
 
 	lc_time_run clean_portal_repository
+
+	lc_time_run generate_breaking_changes_report
 
 	lc_time_run prepare_next_release_branch
 
