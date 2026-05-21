@@ -358,7 +358,7 @@ function upload_release {
 
 		destination_bucket="gs://liferay-releases/${LIFERAY_RELEASE_PRODUCT_NAME}/nightly/"
 	else
-		gsutil rm -r "gs://liferay-releases-candidates/${_PRODUCT_VERSION}-*"
+		# gsutil rm -r "gs://liferay-releases-candidates/${_PRODUCT_VERSION}-*"
 
 		destination_bucket="gs://liferay-releases-candidates/${_PRODUCT_VERSION}-${_BUILD_TIMESTAMP}/"
 	fi

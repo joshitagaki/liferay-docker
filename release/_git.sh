@@ -249,7 +249,9 @@ function update_release_tool_repository {
 
 	git reset --hard && git clean -dfx
 
-	local release_tool_sha=$(lc_get_property "${_PROJECTS_DIR}/${LIFERAY_PORTAL_REPOSITORY_NAME}/release.properties" "release.tool.sha")
+	# local release_tool_sha=$(lc_get_property "${_PROJECTS_DIR}/${LIFERAY_PORTAL_REPOSITORY_NAME}/release.properties" "release.tool.sha")
+
+	local release_tool_sha=d98b34adfbbafcc19dac2b7231819a4b2e0fc8d4
 
 	if [ ! -n "${release_tool_sha}" ]
 	then
@@ -266,13 +268,27 @@ function update_release_tool_repository {
 		return "${LIFERAY_COMMON_EXIT_CODE_SKIPPED}"
 	fi
 
-	git fetch --force --prune upstream
+	# git fetch --force --prune upstream
 
-	git fetch --force --prune --tags upstream
+	# git fetch --force --prune --tags upstream
 
-	git checkout master
+	# git checkout master
 
-	git pull upstream master
+	# git pull upstream master
+
+	if git remote | grep -q "^kevhlee$"
+	then
+		lc_log INFO "Remote 'kevhlee' already exists. Skipping..."
+	else
+		lc_log INFO "Remote 'kevhlee' not found. Adding it now..."
+		git remote add kevhlee git@github.com:kevhlee/liferay-release-tool-ee.git
+	fi
+
+	git fetch --force --prune kevhlee
+
+	git fetch --force --prune --tags kevhlee
+
+	git checkout LPD-87337
 
 	git checkout "${release_tool_sha}"
 
