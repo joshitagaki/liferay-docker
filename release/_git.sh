@@ -251,7 +251,7 @@ function update_release_tool_repository {
 
 	# local release_tool_sha=$(lc_get_property "${_PROJECTS_DIR}/${LIFERAY_PORTAL_REPOSITORY_NAME}/release.properties" "release.tool.sha")
 
-	local release_tool_sha=d98b34adfbbafcc19dac2b7231819a4b2e0fc8d4
+	local release_tool_sha=62f5e8be196f686f53bae2bda5bd09c8333663e1
 
 	if [ ! -n "${release_tool_sha}" ]
 	then
