@@ -251,7 +251,7 @@ function update_release_tool_repository {
 
 	# local release_tool_sha=$(lc_get_property "${_PROJECTS_DIR}/${LIFERAY_PORTAL_REPOSITORY_NAME}/release.properties" "release.tool.sha")
 
-	local release_tool_sha=2843ede124c1bb6ab39026d34bfed3fcbdffeaff
+	local release_tool_sha=a22d0a5033681fc7f192b7d308781472c01c2720
 
 	if [ ! -n "${release_tool_sha}" ]
 	then
@@ -288,7 +288,7 @@ function update_release_tool_repository {
 
 	git fetch --force --prune --tags kevhlee
 
-	git checkout LPD-87337
+	git checkout LPD-89421-followup
 
 	git checkout "${release_tool_sha}"
 
