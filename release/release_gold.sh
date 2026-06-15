@@ -74,7 +74,7 @@ function check_usage {
 }
 
 function generate_breaking_changes_report {
-	if ! is_quarterly_release
+	if ! is_u_release
 	then
 		lc_log INFO "Skipping the breaking changes report."
 
@@ -88,18 +88,16 @@ function generate_breaking_changes_report {
 		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
 	fi
 
-	local previous_product_version=$( \
-		jq --raw-output "[.[] | \
-			select(.product == \"${LIFERAY_RELEASE_PRODUCT_NAME}\" and .promoted == \"true\" and .targetPlatformVersion != \"${_PRODUCT_VERSION}\") | \
-			.targetPlatformVersion] | first" "${_PROMOTION_DIR}/releases.json" | \
-		tr -d '[:space:]')
+	local current_trivial=$(get_release_version_trivial)
 
-	if [ -z "${previous_product_version}" ] || [ "${previous_product_version}" == "null" ]
+	if [ "${current_trivial}" -le 0 ]
 	then
-		lc_log ERROR "Unable to find a previous product version for the breaking changes report."
+		lc_log INFO "No previous u release exists for ${_PRODUCT_VERSION}."
 
-		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
+		return "${LIFERAY_COMMON_EXIT_CODE_SKIPPED}"
 	fi
+
+	local previous_product_version="${_PRODUCT_VERSION/u${current_trivial}/u$((current_trivial - 1))}"
 
 	local end_hash=$(lc_get_property "$(lc_download "https://releases.liferay.com/${LIFERAY_RELEASE_PRODUCT_NAME}/${_PRODUCT_VERSION}/release.properties")" git.hash.liferay-portal-ee)
 	local start_hash=$(lc_get_property "$(lc_download "https://releases.liferay.com/${LIFERAY_RELEASE_PRODUCT_NAME}/${previous_product_version}/release.properties")" git.hash.liferay-portal-ee)
@@ -111,11 +109,18 @@ function generate_breaking_changes_report {
 		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
 	fi
 
+	local repo_branch="$(get_product_group_version).x"
+
+	if [ "${repo_branch}" == "7.4.x" ]
+	then
+		repo_branch="master"
+	fi
+
 	local report_file=$(mktemp --suffix=.md)
 
 	if ! generate_breaking_changes_markdown \
 			"${_PROJECTS_DIR}/liferay-portal-ee" \
-			"release-$(get_product_group_version)" \
+			"${repo_branch}" \
 			"${start_hash}" \
 			"${end_hash}" \
 			"${report_file}"
