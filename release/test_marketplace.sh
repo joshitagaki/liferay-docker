@@ -21,10 +21,13 @@ function main {
 		test_marketplace_get_latest_product_virtual_settings_file_entry_json_index
 		test_marketplace_get_liferay_marketplace_product_activation_key
 		test_marketplace_get_liferay_marketplace_product_activation_key_name
+		test_marketplace_get_liferay_marketplace_product_app_name
 		test_marketplace_get_liferay_marketplace_product_module_regex
 		test_marketplace_get_liferay_marketplace_product_names_by_release
+		test_marketplace_get_unlicensed_lpkg_version
 		test_marketplace_not_check_liferay_marketplace_products_compatibility
 		test_marketplace_not_deploy_liferay_marketplace_product_activation_key
+		test_marketplace_not_package_cmp_and_dsr_bundles
 	fi
 }
 
@@ -118,7 +121,16 @@ function test_marketplace_deploy_liferay_marketplace_product_activation_key {
 	_test_marketplace_deploy_liferay_marketplace_product_activation_key "dsr" "activation-key-dsr-2026.xml"
 	_test_marketplace_deploy_liferay_marketplace_product_activation_key "punchout" "activation-key-punchout2go-2026-04-01.xml"
 
+	local deploy_dir=$(mktemp --directory)
+
+	_deploy_liferay_marketplace_product_activation_key "cmp" "${deploy_dir}" &> /dev/null
+
+	assert_equals \
+		"${?}" "${LIFERAY_COMMON_EXIT_CODE_OK}" \
+		"$(ls -1 "${deploy_dir}/activation-key-cmp-2026.xml" | wc --lines)" "1"
+
 	rm --force --recursive "${activation_key_directory}"
+	rm --force --recursive "${deploy_dir}"
 }
 
 function test_marketplace_get_cmp_activation_key {
@@ -164,6 +176,12 @@ function test_marketplace_get_liferay_marketplace_product_activation_key_name {
 	_test_marketplace_get_liferay_marketplace_product_activation_key_name "punchout" "Liferay Commerce Connector to PunchOut2Go"
 }
 
+function test_marketplace_get_liferay_marketplace_product_app_name {
+	_test_marketplace_get_liferay_marketplace_product_app_name "cmp" "content-marketing-platform"
+	_test_marketplace_get_liferay_marketplace_product_app_name "drools" ""
+	_test_marketplace_get_liferay_marketplace_product_app_name "dsr" "digital-sales-room"
+}
+
 function test_marketplace_get_liferay_marketplace_product_module_regex {
 	_test_marketplace_get_liferay_marketplace_product_module_regex "cmp" "cmp|content.marketing.platform"
 	_test_marketplace_get_liferay_marketplace_product_module_regex "drools" "drools"
@@ -180,6 +198,13 @@ function test_marketplace_get_liferay_marketplace_product_names_by_release {
 	_test_marketplace_get_liferay_marketplace_product_names_by_release "2027.q1.1-lts-cms-standalone" "cmp"
 }
 
+function test_marketplace_get_unlicensed_lpkg_version {
+	_test_marketplace_get_unlicensed_lpkg_version "2026.q3.0" "" "26.3.0"
+	_test_marketplace_get_unlicensed_lpkg_version "2027.q1.0-lts" "" "27.1.0"
+	_test_marketplace_get_unlicensed_lpkg_version "7.4.13-u154" "2026-11-04" "26.4.0"
+	_test_marketplace_get_unlicensed_lpkg_version "7.4.13-u155" "2027-01-15" "27.1.0"
+}
+
 function test_marketplace_not_check_liferay_marketplace_products_compatibility {
 	_test_marketplace_not_check_liferay_marketplace_products_compatibility "2025.q1.20-lts"
 	_test_marketplace_not_check_liferay_marketplace_products_compatibility "2026.q2.5"
@@ -193,6 +218,15 @@ function test_marketplace_not_deploy_liferay_marketplace_product_activation_key 
 
 	_test_marketplace_not_deploy_liferay_marketplace_product_activation_key "cmp" "${LIFERAY_COMMON_EXIT_CODE_BAD}"
 	_test_marketplace_not_deploy_liferay_marketplace_product_activation_key "drools" "${LIFERAY_COMMON_EXIT_CODE_OK}"
+}
+
+function test_marketplace_not_package_cmp_and_dsr_bundles {
+	_test_marketplace_not_package_cmp_and_dsr_bundles "2025.q4.0" "release-candidate"
+	_test_marketplace_not_package_cmp_and_dsr_bundles "2026.q2.5" "release-candidate"
+	_test_marketplace_not_package_cmp_and_dsr_bundles "2026.q3.0" "nightly"
+	_test_marketplace_not_package_cmp_and_dsr_bundles "2026.q4.0-cms-standalone" "release-candidate"
+	_test_marketplace_not_package_cmp_and_dsr_bundles "7.4.13-u151" "release-candidate"
+	_test_marketplace_not_package_cmp_and_dsr_bundles "7.4.13-u154-cms-standalone" "release-candidate"
 }
 
 function _test_marketplace_check_liferay_marketplace_product_activation_key {
@@ -247,6 +281,10 @@ function _test_marketplace_get_liferay_marketplace_product_activation_key_name {
 	assert_equals "$(_get_liferay_marketplace_product_activation_key_name "${1}")" "${2}"
 }
 
+function _test_marketplace_get_liferay_marketplace_product_app_name {
+	assert_equals "$(_get_liferay_marketplace_product_app_name "${1}")" "${2}"
+}
+
 function _test_marketplace_get_liferay_marketplace_product_module_regex {
 	assert_equals "$(_get_liferay_marketplace_product_module_regex "${1}")" "${2}"
 }
@@ -255,6 +293,13 @@ function _test_marketplace_get_liferay_marketplace_product_names_by_release {
 	_PRODUCT_VERSION=${1}
 
 	assert_equals "$(_get_liferay_marketplace_product_names_by_release "cmp" "drools" "dsr" | xargs)" "${2}"
+}
+
+function _test_marketplace_get_unlicensed_lpkg_version {
+	_PRODUCT_VERSION=${1}
+	LIFERAY_RELEASE_TEST_DATE=${2}
+
+	assert_equals "$(_get_unlicensed_lpkg_version)" "${3}"
 }
 
 function _test_marketplace_not_check_liferay_marketplace_products_compatibility {
@@ -269,6 +314,17 @@ function _test_marketplace_not_deploy_liferay_marketplace_product_activation_key
 	_deploy_liferay_marketplace_product_activation_key "${1}" &> /dev/null
 
 	assert_equals "${?}" "${2}"
+}
+
+function _test_marketplace_not_package_cmp_and_dsr_bundles {
+	_PRODUCT_VERSION=${1}
+	LIFERAY_RELEASE_OUTPUT=${2}
+
+	package_cmp_and_dsr_bundles &> /dev/null
+
+	assert_equals "${?}" "${LIFERAY_COMMON_EXIT_CODE_SKIPPED}"
+
+	unset LIFERAY_RELEASE_OUTPUT
 }
 
 main "${@}"
