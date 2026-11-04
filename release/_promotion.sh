@@ -92,7 +92,11 @@ function promote_packages {
 		return "${LIFERAY_COMMON_EXIT_CODE_SKIPPED}"
 	fi
 
-	gcloud storage cp --recursive "gs://liferay-releases-candidates/${_PRODUCT_VERSION}-${LIFERAY_RELEASE_RC_BUILD_TIMESTAMP}" "gs://liferay-releases/${release_dir_name}"
+	local release_candidate_dir="gs://liferay-releases-candidates/${_PRODUCT_VERSION}-${LIFERAY_RELEASE_RC_BUILD_TIMESTAMP}"
+
+	_remove_cmp_and_dsr_bundles "${release_candidate_dir}"
+
+	gcloud storage cp --recursive "${release_candidate_dir}" "gs://liferay-releases/${release_dir_name}"
 }
 
 function _download_bom_file {
@@ -128,6 +132,21 @@ function _download_from_nexus {
 
 		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
 	fi
+}
+
+function _remove_cmp_and_dsr_bundles {
+	local release_candidate_dir=${1}
+
+	local cmp_and_dsr_bundle_urls=$(gcloud storage ls "${release_candidate_dir}/" | grep --extended-regexp "tomcat-.+-(cmp|dsr)-[0-9]+\.7z$")
+
+	local cmp_and_dsr_bundle_url
+
+	for cmp_and_dsr_bundle_url in ${cmp_and_dsr_bundle_urls}
+	do
+		lc_log INFO "Removing ${cmp_and_dsr_bundle_url} before promoting ${_PRODUCT_VERSION}."
+
+		gcloud storage rm "${cmp_and_dsr_bundle_url}"
+	done
 }
 
 function _verify_checksum {
