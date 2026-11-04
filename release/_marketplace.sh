@@ -117,6 +117,34 @@ function check_liferay_marketplace_products_compatibility {
 	stop_tomcat &> /dev/null
 }
 
+function package_cmp_and_dsr_bundles {
+	rm --force --recursive "${_BUILD_DIR}/cmp_and_dsr"
+
+	if [ "$(get_release_output)" != "release-candidate" ] ||
+	   is_ai_hub_release ||
+	   is_cms_standalone_release ||
+	   (! is_quarterly_release && ! is_u_release) ||
+	   (is_quarterly_release && is_early_product_version_than "2026.q3.0") ||
+	   (is_u_release && is_early_product_version_than "7.4.13-u152")
+	then
+		lc_log INFO "The CMP and DSR bundles should not be packaged for the ${_PRODUCT_VERSION} release."
+
+		return "${LIFERAY_COMMON_EXIT_CODE_SKIPPED}"
+	fi
+
+	local product_name
+
+	for product_name in cmp dsr
+	do
+		_package_liferay_marketplace_product_bundle "${product_name}"
+
+		if [[ "${?}" -eq "${LIFERAY_COMMON_EXIT_CODE_BAD}" ]]
+		then
+			return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
+		fi
+	done
+}
+
 function _check_liferay_marketplace_product_activation_key {
 	local product_name=${1}
 
@@ -215,6 +243,7 @@ function _check_liferay_marketplace_product_compatibility {
 }
 
 function _deploy_liferay_marketplace_product_activation_key {
+	local deploy_dir=${2:-"${_BUNDLES_DIR}/deploy"}
 	local product_name=${1}
 
 	local liferay_marketplace_product_activation_key_name=$(_get_liferay_marketplace_product_activation_key_name "${product_name}")
@@ -235,12 +264,13 @@ function _deploy_liferay_marketplace_product_activation_key {
 		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
 	fi
 
-	lc_log INFO "Deploying the ${liferay_marketplace_product_activation_key_name} activation key to ${_BUNDLES_DIR}/deploy."
+	lc_log INFO "Deploying the ${liferay_marketplace_product_activation_key_name} activation key to ${deploy_dir}."
 
-	cp "${liferay_marketplace_product_activation_key}" "${_BUNDLES_DIR}/deploy"
+	cp "${liferay_marketplace_product_activation_key}" "${deploy_dir}"
 }
 
 function _deploy_liferay_marketplace_product_zip_file {
+	local deploy_dir=${2:-"${_BUNDLES_DIR}/deploy"}
 	local liferay_marketplace_product_zip_file_path=${1}
 
 	if [ ! -f "${liferay_marketplace_product_zip_file_path}" ]
@@ -252,11 +282,11 @@ function _deploy_liferay_marketplace_product_zip_file {
 
 	if unzip -l "${liferay_marketplace_product_zip_file_path}" | grep "client-extension" &> /dev/null
 	then
-		cp "${liferay_marketplace_product_zip_file_path}" "${_BUNDLES_DIR}/deploy"
+		cp "${liferay_marketplace_product_zip_file_path}" "${deploy_dir}"
 	elif unzip -l "${liferay_marketplace_product_zip_file_path}" | grep "\.lpkg$" &> /dev/null
 	then
 		unzip \
-			-d "${_BUNDLES_DIR}/deploy" \
+			-d "${deploy_dir}" \
 			-j \
 			-o \
 			-q \
@@ -266,7 +296,7 @@ function _deploy_liferay_marketplace_product_zip_file {
 	elif unzip -l "${liferay_marketplace_product_zip_file_path}" | grep "\.zip$" &> /dev/null
 	then
 		unzip \
-			-d "${_BUNDLES_DIR}/deploy" \
+			-d "${deploy_dir}" \
 			-j \
 			-o \
 			-q \
@@ -277,10 +307,53 @@ function _deploy_liferay_marketplace_product_zip_file {
 
 	if [[ "${?}" -ne 0 ]]
 	then
-		lc_log ERROR "Unable to deploy $(basename "${liferay_marketplace_product_zip_file_path}") to ${_BUNDLES_DIR}/deploy."
+		lc_log ERROR "Unable to deploy $(basename "${liferay_marketplace_product_zip_file_path}") to ${deploy_dir}."
 
 		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
 	fi
+}
+
+function _deploy_unlicensed_lpkg {
+	local deploy_dir=${2}
+	local product_name=${1}
+
+	local app_name=$(_get_liferay_marketplace_product_app_name "${product_name}")
+
+	local app_dir="${_PROJECTS_DIR}/${LIFERAY_PORTAL_REPOSITORY_NAME}/modules/.releng/dxp/apps/${app_name}"
+
+	rm --force --recursive "${app_dir}/dist"
+
+	lc_cd "${_PROJECTS_DIR}/${LIFERAY_PORTAL_REPOSITORY_NAME}/modules"
+
+	local lpkg_version=$(_get_unlicensed_lpkg_version)
+
+	lc_log INFO "Building the unlicensed ${app_name} ${lpkg_version} LPKG file."
+
+	ant \
+		-Dapp.name="${app_name}" \
+		-Dapp.version="${lpkg_version}" \
+		-Dcheck.stale.artifacts.skip=true \
+		build-app-unlicensed-lpkg
+
+	if [[ "${?}" -ne 0 ]]
+	then
+		lc_log ERROR "Unable to build the unlicensed ${app_name} ${lpkg_version} LPKG file."
+
+		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
+	fi
+
+	local lpkg_file_path=$(find "${app_dir}/dist" -maxdepth 1 -name "*unlicensed.lpkg" -type f | head --lines=1)
+
+	if [ -z "${lpkg_file_path}" ]
+	then
+		lc_log ERROR "Unable to find the unlicensed ${app_name} LPKG file in ${app_dir}/dist."
+
+		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
+	fi
+
+	lc_log INFO "Deploying $(basename "${lpkg_file_path}") to ${deploy_dir}."
+
+	cp "${lpkg_file_path}" "${deploy_dir}"
 }
 
 function _download_product {
@@ -444,6 +517,18 @@ function _get_liferay_marketplace_product_activation_key_name {
 	fi
 }
 
+function _get_liferay_marketplace_product_app_name {
+	local product_name=${1}
+
+	if [ "${product_name}" == "cmp" ]
+	then
+		echo "content-marketing-platform"
+	elif [ "${product_name}" == "dsr" ]
+	then
+		echo "digital-sales-room"
+	fi
+}
+
 function _get_liferay_marketplace_product_module_regex {
 	local product_name=${1}
 
@@ -569,6 +654,84 @@ function _get_punchout2go_activation_key {
 	then
 		echo "${LIFERAY_PUNCHOUT2GO_ACTIVATION_KEY_2029}"
 	fi
+}
+
+function _get_unlicensed_lpkg_version {
+	if is_u_release
+	then
+		local month=$(date --date "$(get_today)" +%-m)
+
+		echo "$(date --date "$(get_today)" +%y).$(((month + 2) / 3)).0"
+
+		return
+	fi
+
+	echo "$(($(get_release_year) - 2000)).$(get_release_quarter).0"
+}
+
+function _package_liferay_marketplace_product_bundle {
+	local product_name=${1}
+
+	local bundle_dir="${_BUILD_DIR}/cmp_and_dsr/${product_name}"
+
+	mkdir --parents "${bundle_dir}"
+
+	local tomcat_bundle_file_name="$(get_tomcat_bundle_name).7z"
+
+	lc_log INFO "Extracting ${tomcat_bundle_file_name} to ${bundle_dir}."
+
+	7z x "-o${bundle_dir}" "${_BUILD_DIR}/release/${tomcat_bundle_file_name}"
+
+	if [[ "${?}" -ne 0 ]]
+	then
+		lc_log ERROR "Unable to extract ${tomcat_bundle_file_name}."
+
+		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
+	fi
+
+	local deploy_dir="${bundle_dir}/$(get_package_dir_name)/deploy"
+
+	mkdir --parents "${deploy_dir}"
+
+	_deploy_liferay_marketplace_product_activation_key "${product_name}" "${deploy_dir}"
+
+	if [[ "${?}" -eq "${LIFERAY_COMMON_EXIT_CODE_BAD}" ]]
+	then
+		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
+	fi
+
+	if is_first_quarterly_release || is_u_release
+	then
+		_deploy_unlicensed_lpkg "${product_name}" "${deploy_dir}"
+	else
+		lc_log INFO "Deploying Liferay Marketplace product zip file ${product_name}.zip to ${deploy_dir}."
+
+		_deploy_liferay_marketplace_product_zip_file "${_BUILD_DIR}/marketplace/${product_name}.zip" "${deploy_dir}"
+	fi
+
+	if [[ "${?}" -eq "${LIFERAY_COMMON_EXIT_CODE_BAD}" ]]
+	then
+		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
+	fi
+
+	lc_cd "${bundle_dir}"
+
+	local product_bundle_file_name="liferay-${LIFERAY_RELEASE_PRODUCT_NAME}-tomcat-${_PRODUCT_VERSION}-${product_name}-${_BUILD_TIMESTAMP}.7z"
+
+	7z a "../${product_bundle_file_name}" "$(get_package_dir_name)"
+
+	if [[ "${?}" -ne 0 ]]
+	then
+		lc_log ERROR "Unable to package ${product_bundle_file_name}."
+
+		return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
+	fi
+
+	lc_cd "${_BUILD_DIR}/cmp_and_dsr"
+
+	rm --force --recursive "${bundle_dir}"
+
+	lc_log INFO "The ${product_name} bundle is packaged at ${_BUILD_DIR}/cmp_and_dsr/${product_bundle_file_name}."
 }
 
 function _set_liferay_marketplace_oauth2_token {

@@ -266,6 +266,50 @@ function upload_boms {
 	done
 }
 
+function upload_cmp_and_dsr_bundles {
+	if [ "${LIFERAY_RELEASE_TEST_MODE}" == "true" ]
+	then
+		return
+	fi
+
+	if [ "${LIFERAY_RELEASE_UPLOAD}" != "true" ]
+	then
+		lc_log INFO "Set the environment variable LIFERAY_RELEASE_UPLOAD to \"true\" to enable."
+
+		return "${LIFERAY_COMMON_EXIT_CODE_SKIPPED}"
+	fi
+
+	if [ ! -d "${_BUILD_DIR}/cmp_and_dsr" ]
+	then
+		lc_log INFO "There are no CMP and DSR bundles to upload for the ${_PRODUCT_VERSION} release."
+
+		return "${LIFERAY_COMMON_EXIT_CODE_SKIPPED}"
+	fi
+
+	lc_cd "${_BUILD_DIR}/cmp_and_dsr"
+
+	local destination_bucket="gs://$(get_release_candidates_dir_name)/${_PRODUCT_VERSION}-${_BUILD_TIMESTAMP}/"
+
+	local file
+
+	for file in *.7z
+	do
+		if [ -f "${file}" ]
+		then
+			lc_log INFO "Copying ${file} to ${destination_bucket}."
+
+			gcloud storage cp "${_BUILD_DIR}/cmp_and_dsr/${file}" "${destination_bucket}"
+
+			if [[ "${?}" -ne 0 ]]
+			then
+				lc_log ERROR "Unable to upload ${file} to ${destination_bucket}."
+
+				return "${LIFERAY_COMMON_EXIT_CODE_BAD}"
+			fi
+		fi
+	done
+}
+
 function upload_hotfix {
 	if [ "${LIFERAY_RELEASE_TEST_MODE}" == "true" ]
 	then
